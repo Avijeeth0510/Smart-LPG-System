@@ -1,0 +1,92 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "HX711.h"
+
+// HX711 Pins
+#define DOUT 3
+#define CLK 2
+
+// OLED Config
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// Load Cell   
+HX711 scale;
+float calibration_factor = 20000.0;  // Adjust based on your calibration
+
+// Gas Config
+const float MAX_GAS_WEIGHT = 5.0;  // Full gas = 5 kg
+const int NUM_BARS = 8;
+
+void setup() {
+  Serial.begin(9600);
+
+  // Initialize OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED init failed"));
+    while (true);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Initializing...");
+  display.display();
+
+  // Initialize Load Cell
+  scale.begin(DOUT, CLK);
+  scale.set_scale(calibration_factor);
+  scale.tare();
+
+  delay(2000);
+}
+
+void loop() {
+  float weight = scale.get_units(10); // Average of 10 readings
+  float gasPercentage = constrain((weight / MAX_GAS_WEIGHT) * 100.0, 0, 100);
+  int barsToShow = round((gasPercentage / 100.0) * NUM_BARS);
+
+  // Debug Print
+  Serial.print("Weight: ");
+  Serial.print(weight, 2);
+  Serial.print(" kg | Gas: ");
+  Serial.print(gasPercentage, 0);
+  Serial.println("%");
+
+  // OLED Display
+  display.clearDisplay();
+
+  // 1️⃣ Gas Percentage
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("Gas: ");
+  display.print(gasPercentage, 0);
+  display.println("%");
+
+  // 2️⃣ Bar Graph
+  int barWidth = 12;  // Width of each bar
+  int barHeight = 8;
+  int startX = 0;
+  int startY = 16;
+
+  for (int i = 0; i < NUM_BARS; i++) {
+    if (i < barsToShow) {
+      display.fillRect(startX + i * (barWidth + 1), startY, barWidth, barHeight, SSD1306_WHITE);
+    } else {
+      display.drawRect(startX + i * (barWidth + 1), startY, barWidth, barHeight, SSD1306_WHITE);
+    }
+  }
+
+  // 3️⃣ Actual Weight
+  display.setTextSize(1);
+  display.setCursor(0, 40);
+  display.print("Weight: ");
+  display.print(weight, 2);
+  display.println(" kg");
+
+  display.display();
+  delay(800);
+}
