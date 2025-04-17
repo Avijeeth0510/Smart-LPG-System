@@ -80,7 +80,7 @@ void loop() {
     }
   }
 
-  // 3️⃣ Actual Weight
+  // 3️⃣ Actual Weight updated
   display.setTextSize(1);
   display.setCursor(0, 40);
   display.print("Weight: ");
