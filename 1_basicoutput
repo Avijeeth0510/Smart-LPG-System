@@ -1,22 +1,128 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include "HX711.h"
 
+// WiFi Credentials
+const char* ssid = "Avijeeth";
+const char* password = "20062006";
+
+// Telegram
+String botToken = "7504449268:AAGf-_GpiNZxPATfYF6tpMdLE3paCzgygsM";
+String chatID = "6914952704";
+
+// HX711 Pins
 #define DOUT 18
 #define CLK 19
 
+// OLED Setup
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
 HX711 scale;
+float calibration_factor = 20000.0;
+float maxWeight = 5.0;
+
+bool halfAlertSent = false;
+bool lowAlertSent = false;
+
+void sendTelegramMessage(String message) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String url = "https://api.telegram.org/bot" + botToken + "/sendMessage?chat_id=" + chatID + "&text=" + message;
+    http.begin(url);
+    http.GET();
+    http.end();
+  }
+}
+
+void drawBatteryBar(float percentage) {
+  int filledBars = round((percentage / 100.0) * 8);
+  int xStart = 0;
+  for (int i = 0; i < 8; i++) {
+    if (i < filledBars)
+      display.fillRect(xStart + i * 15, 15, 12, 8, SSD1306_WHITE);  // Thick filled bar
+    else
+      display.drawRect(xStart + i * 15, 15, 12, 8, SSD1306_WHITE);  // Thick empty bar
+  }
+}
+
+void drawWiFiStatus(bool connected) {
+  display.setCursor(110, 0);
+  if (connected)
+    display.write(0xFC); // ✓
+  else
+    display.write(0xD7); // ✗
+}
 
 void setup() {
   Serial.begin(115200);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED init failed");
+    while (true);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 10);
+  display.println("Connecting WiFi...");
+  display.display();
+
+  WiFi.begin(ssid, password);
+  int tries = 0;
+  while (WiFi.status() != WL_CONNECTED && tries < 20) {
+    delay(500);
+    Serial.print(".");
+    tries++;
+  }
+
   scale.begin(DOUT, CLK);
-  Serial.println("Ready");
+  scale.set_scale(calibration_factor);
+  scale.tare();
 }
 
 void loop() {
-  if (scale.is_ready()) {
-    Serial.print("Raw reading: ");
-    Serial.println(scale.read());
-  } else {
-    Serial.println("HX711 not found.");
+  float weight = scale.get_units(10);
+  if (weight < 0) weight = 0;
+  float percentage = (weight / maxWeight) * 100.0;
+  if (percentage > 100.0) percentage = 100.0;
+
+  display.clearDisplay();
+
+  // Top line: Gas percentage + WiFi icon
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("Gas: ");
+  display.print(percentage, 0);
+  display.print("%");
+  drawWiFiStatus(WiFi.status() == WL_CONNECTED);
+
+  // Middle: Bar graph
+  drawBatteryBar(percentage);
+
+  // Bottom: Weight in KG
+  display.setTextSize(2);
+  display.setCursor(0, 40);
+  display.print(weight, 2);
+  display.println(" kg");
+
+  display.display();
+
+  // Telegram Alerts
+  if (!halfAlertSent && abs(weight - 2.5) < 0.15) {
+    sendTelegramMessage("The weight of the gas is half");
+    halfAlertSent = true;
   }
-  delay(1000);
+
+  if (!lowAlertSent && weight <= 0.5) {
+    sendTelegramMessage("Time to get a new cylinder");
+    lowAlertSent = true;
+  }
+
+  delay(2000);
 }
