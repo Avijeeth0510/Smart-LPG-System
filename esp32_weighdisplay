@@ -1,0 +1,66 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "HX711.h"
+
+// HX711 Pins (connected to ESP32)
+#define DOUT 18
+#define CLK 19
+
+// OLED Config
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// Load Cell Setup
+HX711 scale;
+float calibration_factor = 20000.0;  // Adjusted based on 3.78 reading for 5kg
+
+void setup() {
+  Serial.begin(115200);
+
+  // OLED Init
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED init failed");
+    while (true);  // Halt
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Starting...");
+  display.display();
+  delay(2000);
+
+  // HX711 Init
+  scale.begin(DOUT, CLK);
+  scale.set_scale(calibration_factor);  // Adjusted for 5kg = ~5kg
+  Serial.println("Taring... Keep it empty.");
+  scale.tare();  // Reset to 0
+  delay(2000);
+}
+
+void loop() {
+  float weight = scale.get_units(10);  // Average 10 samples
+
+  if (weight < 0) weight = 0;
+
+  Serial.print("Weight: ");
+  Serial.print(weight, 2);
+  Serial.println(" kg");
+
+  // Show on OLED
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("LPG Weight:");
+
+  display.setTextSize(2);
+  display.setCursor(0, 20);
+  display.print(weight, 2);
+  display.println(" kg");
+
+  display.display();
+  delay(1000);
+}
