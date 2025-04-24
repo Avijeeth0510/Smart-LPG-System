@@ -3,7 +3,7 @@
 #include <Adafruit_SSD1306.h>
 #include "HX711.h"
 
-// HX711 Pins (connected to D18 and D19 on ESP32)
+// HX711 Pins (connected to D18 and D19 on ESP32)hi
 #define DOUT 18
 #define CLK 19
 
