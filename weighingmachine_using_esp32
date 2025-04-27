@@ -1,0 +1,95 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "HX711.h"
+
+// HX711 Pins (connected to ESP32)
+#define DOUT 18
+#define CLK 19
+
+// OLED Config
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// Load Cell Setup
+HX711 scale;
+float calibration_factor = 19000.0;  // Adjust as needed
+float maxWeight = 5.0;  // Full gas weight
+
+void setup() {
+  Serial.begin(115200);
+
+  // OLED Init
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED init failed");
+    while (true);  // Halt
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Starting...");
+  display.display();
+  delay(2000);
+
+  // HX711 Init
+  scale.begin(DOUT, CLK);
+  scale.set_scale(calibration_factor);
+  Serial.println("Taring... Keep it empty.");
+  scale.tare();
+  delay(2000);
+}
+
+// Draw 8 bars based on gas percentage (each bar = 12.5%)
+void drawGasBar(float percentage) {
+  int bars = round((percentage / 100.0) * 8);  // 0 to 8 bars
+  int xStart = 0;
+  int barWidth = 12;
+  int barHeight = 8;
+  for (int i = 0; i < 8; i++) {
+    int x = xStart + i * (barWidth + 2);
+    if (i < bars)
+      display.fillRect(x, 12, barWidth, barHeight, SSD1306_WHITE);
+    else
+      display.drawRect(x, 12, barWidth, barHeight, SSD1306_WHITE);
+  }
+}
+
+void loop() {
+  float weight = scale.get_units(10);
+  if (weight < 0) weight = 0;
+
+  float percentage = (weight / maxWeight) * 100.0;
+  if (percentage > 100.0) percentage = 100.0;
+
+  // Debug Serial output
+  Serial.print("Weight: ");
+  Serial.print(weight, 2);
+  Serial.print(" kg | Gas: ");
+  Serial.print(percentage, 0);
+  Serial.println("%");
+
+  // Show on OLED
+  display.clearDisplay();
+
+  // Top: LPG % text
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("LPG: ");
+  display.print(percentage, 0);
+  display.print("%");
+
+  // Middle: 8-bar gas level
+  drawGasBar(percentage);
+
+  // Bottom: Weight in kg
+  display.setTextSize(2);
+  display.setCursor(0, 35);
+  display.print(weight, 2);
+  display.println(" kg");
+
+  display.display();
+  delay(1000);
+}
